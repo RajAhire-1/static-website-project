@@ -1,106 +1,106 @@
-# 🌐 Static Website Deployment on AWS EC2 Using Terraform + Jenkins CI/CD
+# 🌐 Static Website Deployment Using Terraform & Jenkins (CI/CD Pipeline)
 
-This project demonstrates a fully automated DevOps pipeline where a static website is deployed on AWS EC2 using Terraform and continuously updated via Jenkins using GitHub webhooks.
+This project demonstrates a **complete DevOps automation workflow** where a static website is deployed to AWS EC2 using **Terraform**, and continuously updated through **Jenkins CI/CD** triggered by **GitHub Webhooks**.
 
-The workflow ensures:
+The pipeline ensures:
 
-* 💠 Automated Infrastructure Provisioning
-* 💠 Zero-touch Deployment
-* 💠 Auto-trigger CI/CD on every GitHub push
-* 💠 NGINX Webserver auto-configuration
-* 💠 Real-time delivery to EC2
-
----
-
-# 📸 **Screenshots (Your Actual Output)**
+* 🚀 Automated Infrastructure Provisioning
+* 🔁 Automated Build & Deployment
+* 🌍 Live Web Delivery through NGINX
+* ⚙️ Zero-touch CI/CD using GitHub → Jenkins → EC2
+* 📡 Webhook-based auto-trigger on every Git push
 
 ---
 
-## ✅ Jenkins Pipeline — Successful Build
+# 📸 Screenshots (Actual Project Output)
 
-![Image](img/deploy_success)
+## ✅ Jenkins Pipeline — Successful Deployment
 
+![Jenkins Deployment](img/deploy_success.png)
 
 ---
 
 ## ✅ Git Clone — Local Workspace
 
-![Image](img/git_clone)
-
-
+![Git Clone](img/git_clone.png)
 
 ---
 
-## ✅ NGINX Status — Running on EC2
+## ✅ NGINX Status on EC2
 
-![Image](./img/servers)
+![NGINX Status](img/nginx_status.png)
 
 ---
+
+## ✅ EC2 Server Running
+
+![Servers](img/servers.png)
 
 ---
 
 ## ✅ Final Deployed Website
 
-![Image](img/static_website)
-
+![Static Website](img/static_website.png)
 
 ---
 
 ## ✅ GitHub Webhook Integration
 
-![Image](img/webhook)
+![Webhook](img/webhook.png)
 
 ---
 
 # 🏗️ Project Architecture
 
 ```
-Developer Push → GitHub → Webhook → Jenkins Pipeline
-                          ↓
-                   Terraform EC2 Setup
-                          ↓
-                NGINX + Auto Deployment
-                          ↓
-                  Live Static Website
+Developer → GitHub Push
+        ↓ (Webhook)
+     Jenkins Pipeline
+        ↓
+Terraform Infrastructure → EC2 Instance
+        ↓
+NGINX Server → Live Static Website
 ```
 
 ---
 
 # 🧱 Technologies Used
 
-| Component           | Purpose                                 |
-| ------------------- | --------------------------------------- |
-| **Terraform**       | Provision EC2, Security Group, Key Pair |
-| **AWS EC2**         | Host static website with NGINX          |
-| **NGINX**           | Web server                              |
-| **Jenkins**         | CI/CD pipeline automation               |
-| **GitHub Webhooks** | Trigger Jenkins on every push           |
-| **Bash Scripting**  | Server configuration                    |
+| Component           | Purpose                         |
+| ------------------- | ------------------------------- |
+| **Terraform**       | Provision AWS EC2, SG, Key Pair |
+| **AWS EC2**         | Host the static website         |
+| **NGINX**           | Web server                      |
+| **Jenkins**         | CI/CD automation                |
+| **GitHub Webhooks** | Auto-trigger Jenkins on push    |
+| **Bash Scripts**    | Server configuration            |
 
 ---
 
-# 📁 Folder Structure
+# 📁 Project Structure
 
 ```
 static-website-project/
+│
 ├── infra/
 │   ├── main.tf
 │   ├── variables.tf
 │   └── user_data.sh
+│
 ├── Jenkinsfile
-└── website files (HTML/CSS/JS)
+│
+└── website-files (HTML, CSS, JS)
 ```
 
 ---
 
-# 🧩 Terraform (main.tf)
+# 🧩 Terraform — main.tf
 
 ```hcl
 provider "aws" {
   region = "ap-south-1"
 }
 
-# Key pair - change path to your public key if needed. Better: put newin.pub in same folder and use "file("newin.pub")"
 resource "aws_key_pair" "newin" {
   key_name   = "newin"
   public_key = file("C:/Users/Raj/.ssh/newin.pub")
@@ -147,12 +147,11 @@ resource "aws_security_group" "blog-web" {
 }
 
 resource "aws_instance" "bolg-web" {
-  ami                    = "ami-02b8269d5e85954ef" # Ubuntu 22.04 ap-south-1 (you used earlier)
+  ami                    = "ami-02b8269d5e85954ef"
   instance_type          = "t2.micro"
   vpc_security_group_ids = [aws_security_group.blog-web.id]
   key_name               = aws_key_pair.newin.key_name
 
-  # point to user_data.sh in same folder
   user_data = file("${path.module}/user_data.sh")
 
   tags = {
@@ -160,89 +159,48 @@ resource "aws_instance" "bolg-web" {
   }
 }
 
-output "public_ip" {
-  value = aws_instance.bolg-web.public_ip
-}
-
-output "public_dns" {
-  value = aws_instance.bolg-web.public_dns
-}
-
+output "public_ip"  { value = aws_instance.bolg-web.public_ip  }
+output "public_dns" { value = aws_instance.bolg-web.public_dns }
 ```
 
 ---
 
----
-
-# 🧩 user_data.sh
+# 🧩 Bash Script — user_data.sh
 
 ```bash
 #!/bin/bash
 set -euo pipefail
-
 LOG="/var/log/user-data.log"
 exec > >(tee -a "$LOG") 2>&1
 
-echo "=== user-data start $(date -u +"%Y-%m-%dT%H:%M:%SZ") ==="
+echo "=== user-data start ==="
 
 REPO_URL="https://github.com/RajAhire-1/static-website-project.git"
 WEBROOT="/var/www/html"
 
-# Update and install required packages
 apt-get update -y
-DEB_PKGS="git nginx openjdk-17-jdk"
-apt-get install -y $DEB_PKGS
+apt-get install -y git nginx openjdk-17-jdk
 
-# Add Jenkins official repo and install Jenkins
-wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
-apt-get update -y
-apt-get install -y jenkins
-
-# Ensure services enabled and started
 systemctl enable --now nginx
-systemctl enable --now jenkins
 
-# Deploy website: clone or pull
 if [ -d "${WEBROOT}/.git" ]; then
-  echo "Existing repo found, pulling latest"
-  chown -R ubuntu:ubuntu "${WEBROOT}" || true
-  sudo -u ubuntu git -C "${WEBROOT}" pull --rebase || {
-    echo "pull failed, trying fetch+reset"
-    sudo -u ubuntu git -C "${WEBROOT}" fetch --all || true
-    sudo -u ubuntu git -C "${WEBROOT}" reset --hard origin/HEAD || true
-  }
+  git -C "${WEBROOT}" pull --rebase || true
 else
-  echo "Cloning repo ${REPO_URL} into ${WEBROOT}"
   rm -rf "${WEBROOT:?}/"*
-  git clone "${REPO_URL}" "${WEBROOT}" || {
-    echo "git clone failed — creating placeholder index"
-    mkdir -p "${WEBROOT}"
-    cat > "${WEBROOT}/index.html" <<HTML
-<html><body><h1>Clone failed</h1><p>Check /var/log/user-data.log</p></body></html>
-HTML
-  }
+  git clone "${REPO_URL}" "${WEBROOT}"
 fi
 
-# Correct permissions depending on distro (nginx uses www-data on Ubuntu)
-if id www-data >/dev/null 2>&1; then
-  chown -R www-data:www-data "${WEBROOT}"
-else
-  chown -R ubuntu:ubuntu "${WEBROOT}"
-fi
-
+chown -R www-data:www-data "${WEBROOT}"
 find "${WEBROOT}" -type d -exec chmod 755 {} \;
 find "${WEBROOT}" -type f -exec chmod 644 {} \;
 
-systemctl restart nginx || true
-
-echo "=== user-data finished $(date -u +"%Y-%m-%dT%H:%M:%SZ") ==="
-
+systemctl restart nginx
+echo "=== user-data finished ==="
 ```
 
 ---
 
-# 🔄 Jenkinsfile (CI/CD Pipeline)
+# 🔄 Jenkinsfile — Complete CI/CD Pipeline
 
 ```groovy
 pipeline {
@@ -270,12 +228,7 @@ pipeline {
                                           keyFileVariable: 'SSH_KEY',
                                           usernameVariable: 'SSH_USER')]) {
           sh """
-            # remove any broken jenkins apt list/key which causes apt-get update failure
             ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ${SSH_USER}@${DEPLOY_HOST} '
-              set -e
-              sudo rm -f /etc/apt/sources.list.d/jenkins.list || true
-              sudo rm -f /usr/share/keyrings/jenkins-keyring.asc || true
-
               sudo apt-get update -y
               sudo apt-get install -y nginx git
               sudo systemctl enable nginx
@@ -293,29 +246,17 @@ pipeline {
                                           keyFileVariable: 'SSH_KEY',
                                           usernameVariable: 'SSH_USER')]) {
           sh """
-            scp -o StrictHostKeyChecking=no -i "$SSH_KEY" -r * ${SSH_USER}@${DEPLOY_HOST}:/tmp/deploy_payload || true
+            scp -o StrictHostKeyChecking=no -i "$SSH_KEY" -r * ${SSH_USER}@${DEPLOY_HOST}:/tmp/deploy_payload
 
             ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ${SSH_USER}@${DEPLOY_HOST} "
-              set -e
-              DEPLOY_PATH='${DEPLOY_PATH}'
-              sudo rm -rf \\\"\$DEPLOY_PATH\\\"/* || true
-              sudo mv /tmp/deploy_payload/* \\\"\$DEPLOY_PATH\\\"/ || true
+              sudo rm -rf ${DEPLOY_PATH}/*
+              sudo mv /tmp/deploy_payload/* ${DEPLOY_PATH}/
 
-              if id www-data >/dev/null 2>&1; then
-                sudo chown -R www-data:www-data \\\"\$DEPLOY_PATH\\\"
-              elif id nginx >/dev/null 2>&1; then
-                sudo chown -R nginx:nginx \\\"\$DEPLOY_PATH\\\"
-              else
-                sudo chown -R ubuntu:ubuntu \\\"\$DEPLOY_PATH\\\"
-              fi
+              sudo chown -R www-data:www-data ${DEPLOY_PATH}
+              sudo find ${DEPLOY_PATH} -type d -exec chmod 755 {} \\;
+              sudo find ${DEPLOY_PATH} -type f -exec chmod 644 {} \\;
 
-              sudo find \\\"\$DEPLOY_PATH\\\" -type d -exec chmod 755 {} \\;
-              sudo find \\\"\$DEPLOY_PATH\\\" -type f -exec chmod 644 {} \\;
-
-              sudo systemctl restart nginx || true
-              sudo rm -rf /tmp/deploy_payload || true
-
-              echo DEPLOY_OK
+              sudo systemctl restart nginx
             "
           """
         }
@@ -330,33 +271,28 @@ pipeline {
   }
 
   post {
-    success {
-      echo "✅ Deployment succeeded — open http://${DEPLOY_HOST}"
-    }
-    failure {
-      echo "❌ Deployment failed — check console output"
-    }
+    success { echo "✅ Deployment succeeded — http://${DEPLOY_HOST}" }
+    failure { echo "❌ Deployment failed — check logs" }
   }
 }
-
 ```
 
 ---
 
-# 🚀 Final Result
+# 🚀 Final Outcome
 
-✔️ Terraform creates the server
-✔️ NGINX auto-configured
-✔️ Website deployed to EC2
-✔️ Git push triggers Jenkins automatically
-✔️ Jenkins redeploys site to EC2
-✔️ Live website instantly reflects updates
+✔️ Terraform provisions EC2
+✔️ NGINX auto-installed
+✔️ GitHub push → Jenkins auto-trigger
+✔️ Jenkins deploys latest website version
+✔️ Website live instantly
 
 ---
 
 # 👨‍💻 Author
 
 **Raj Ahire**
-AWS | DevOps | Jenkins | Terraform | CI/CD | Linux
+AWS | DevOps | Terraform | Jenkins | Linux | Automation
 
 
+Would you like an enhanced version?
