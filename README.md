@@ -18,49 +18,37 @@ The workflow ensures:
 
 ## ✅ Jenkins Pipeline — Successful Build
 
-![Image](https://i.sstatic.net/HcgJH.png?utm_source=chatgpt.com)
+![Image](img/deploy_success)
 
-![Image](https://i.sstatic.net/2Afmi.png?utm_source=chatgpt.com)
 
 ---
 
 ## ✅ Git Clone — Local Workspace
 
-![Image](https://media.geeksforgeeks.org/wp-content/uploads/20220326004125/screencapturegithubarpit456jainfirstrepogfg20220326003141-300x189.png?utm_source=chatgpt.com)
+![Image](img/git_clone)
 
-![Image](https://media.geeksforgeeks.org/wp-content/uploads/20200707150457/gitcommit.png?utm_source=chatgpt.com)
+
 
 ---
 
 ## ✅ NGINX Status — Running on EC2
 
-![Image](https://static0.xdaimages.com/wordpress/wp-content/uploads/wm/2023/12/nginx-on-ubuntu.jpg?utm_source=chatgpt.com)
-
-![Image](https://www.devopshint.com/wp-content/uploads/2023/05/nginx-status.png?utm_source=chatgpt.com)
+![Image](./img/servers)
 
 ---
-
-## ✅ AWS EC2 Infrastructure — Terraform Provisioned
-
-![Image](https://i.sstatic.net/S5KNX.png?utm_source=chatgpt.com)
-
-![Image](https://miro.medium.com/v2/resize%3Afit%3A1400/0%2AJu9PmH76d9W0w_J8.png?utm_source=chatgpt.com)
 
 ---
 
 ## ✅ Final Deployed Website
 
-![Image](https://equitydatascience.com/wp-content/uploads/Nexus-Poduction.gif?utm_source=chatgpt.com)
+![Image](img/static_website)
 
-![Image](https://www.sonatype.com/hs-fs/hubfs/1-2025_Website-Assets/product_ui/Repo-6-UI-Product.png?height=2535\&name=Repo-6-UI-Product.png\&width=3685\&utm_source=chatgpt.com)
 
 ---
 
 ## ✅ GitHub Webhook Integration
 
-![Image](https://www.robinwieruch.de/static/4c1dbc3df7f277d85773090cc01d558a/72e01/github-webhook.jpg?utm_source=chatgpt.com)
-
-![Image](https://i.ytimg.com/vi/b_DVXgiByec/maxresdefault.jpg?utm_source=chatgpt.com)
+![Image](img/webhook)
 
 ---
 
@@ -108,23 +96,148 @@ static-website-project/
 # 🧩 Terraform (main.tf)
 
 ```hcl
-<PUT YOUR MAIN.TF HERE>
+provider "aws" {
+  region = "ap-south-1"
+}
+
+# Key pair - change path to your public key if needed. Better: put newin.pub in same folder and use "file("newin.pub")"
+resource "aws_key_pair" "newin" {
+  key_name   = "newin"
+  public_key = file("C:/Users/Raj/.ssh/newin.pub")
+}
+
+resource "aws_security_group" "blog-web" {
+  name = "blog-web"
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name = "blog-web-sg"
+  }
+}
+
+resource "aws_instance" "bolg-web" {
+  ami                    = "ami-02b8269d5e85954ef" # Ubuntu 22.04 ap-south-1 (you used earlier)
+  instance_type          = "t2.micro"
+  vpc_security_group_ids = [aws_security_group.blog-web.id]
+  key_name               = aws_key_pair.newin.key_name
+
+  # point to user_data.sh in same folder
+  user_data = file("${path.module}/user_data.sh")
+
+  tags = {
+    Name = "blog-web"
+  }
+}
+
+output "public_ip" {
+  value = aws_instance.bolg-web.public_ip
+}
+
+output "public_dns" {
+  value = aws_instance.bolg-web.public_dns
+}
+
 ```
 
 ---
-
-# 🧩 variables.tf
-
-```hcl
-<PUT YOUR VARIABLES.TF HERE>
-```
 
 ---
 
 # 🧩 user_data.sh
 
 ```bash
-<PUT YOUR USER_DATA.SH HERE>
+#!/bin/bash
+set -euo pipefail
+
+LOG="/var/log/user-data.log"
+exec > >(tee -a "$LOG") 2>&1
+
+echo "=== user-data start $(date -u +"%Y-%m-%dT%H:%M:%SZ") ==="
+
+REPO_URL="https://github.com/RajAhire-1/static-website-project.git"
+WEBROOT="/var/www/html"
+
+# Update and install required packages
+apt-get update -y
+DEB_PKGS="git nginx openjdk-17-jdk"
+apt-get install -y $DEB_PKGS
+
+# Add Jenkins official repo and install Jenkins
+wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+apt-get update -y
+apt-get install -y jenkins
+
+# Ensure services enabled and started
+systemctl enable --now nginx
+systemctl enable --now jenkins
+
+# Deploy website: clone or pull
+if [ -d "${WEBROOT}/.git" ]; then
+  echo "Existing repo found, pulling latest"
+  chown -R ubuntu:ubuntu "${WEBROOT}" || true
+  sudo -u ubuntu git -C "${WEBROOT}" pull --rebase || {
+    echo "pull failed, trying fetch+reset"
+    sudo -u ubuntu git -C "${WEBROOT}" fetch --all || true
+    sudo -u ubuntu git -C "${WEBROOT}" reset --hard origin/HEAD || true
+  }
+else
+  echo "Cloning repo ${REPO_URL} into ${WEBROOT}"
+  rm -rf "${WEBROOT:?}/"*
+  git clone "${REPO_URL}" "${WEBROOT}" || {
+    echo "git clone failed — creating placeholder index"
+    mkdir -p "${WEBROOT}"
+    cat > "${WEBROOT}/index.html" <<HTML
+<html><body><h1>Clone failed</h1><p>Check /var/log/user-data.log</p></body></html>
+HTML
+  }
+fi
+
+# Correct permissions depending on distro (nginx uses www-data on Ubuntu)
+if id www-data >/dev/null 2>&1; then
+  chown -R www-data:www-data "${WEBROOT}"
+else
+  chown -R ubuntu:ubuntu "${WEBROOT}"
+fi
+
+find "${WEBROOT}" -type d -exec chmod 755 {} \;
+find "${WEBROOT}" -type f -exec chmod 644 {} \;
+
+systemctl restart nginx || true
+
+echo "=== user-data finished $(date -u +"%Y-%m-%dT%H:%M:%SZ") ==="
+
 ```
 
 ---
@@ -132,7 +245,100 @@ static-website-project/
 # 🔄 Jenkinsfile (CI/CD Pipeline)
 
 ```groovy
-<PUT YOUR JENKINSFILE HERE>
+pipeline {
+  agent any
+
+  environment {
+    DEPLOY_USER        = 'ubuntu'
+    DEPLOY_HOST        = '13.201.4.66'
+    DEPLOY_PATH        = '/var/www/html'
+    SSH_CREDENTIALS_ID = 'web-key'
+    REPO_URL           = 'https://github.com/RajAhire-1/static-website-project.git'
+    BRANCH             = 'main'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        git branch: "${BRANCH}", url: "${REPO_URL}"
+      }
+    }
+
+    stage('Prepare Remote') {
+      steps {
+        withCredentials([sshUserPrivateKey(credentialsId: SSH_CREDENTIALS_ID,
+                                          keyFileVariable: 'SSH_KEY',
+                                          usernameVariable: 'SSH_USER')]) {
+          sh """
+            # remove any broken jenkins apt list/key which causes apt-get update failure
+            ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ${SSH_USER}@${DEPLOY_HOST} '
+              set -e
+              sudo rm -f /etc/apt/sources.list.d/jenkins.list || true
+              sudo rm -f /usr/share/keyrings/jenkins-keyring.asc || true
+
+              sudo apt-get update -y
+              sudo apt-get install -y nginx git
+              sudo systemctl enable nginx
+              sudo systemctl start nginx
+              sudo mkdir -p ${DEPLOY_PATH}
+            '
+          """
+        }
+      }
+    }
+
+    stage('Upload & Deploy') {
+      steps {
+        withCredentials([sshUserPrivateKey(credentialsId: SSH_CREDENTIALS_ID,
+                                          keyFileVariable: 'SSH_KEY',
+                                          usernameVariable: 'SSH_USER')]) {
+          sh """
+            scp -o StrictHostKeyChecking=no -i "$SSH_KEY" -r * ${SSH_USER}@${DEPLOY_HOST}:/tmp/deploy_payload || true
+
+            ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ${SSH_USER}@${DEPLOY_HOST} "
+              set -e
+              DEPLOY_PATH='${DEPLOY_PATH}'
+              sudo rm -rf \\\"\$DEPLOY_PATH\\\"/* || true
+              sudo mv /tmp/deploy_payload/* \\\"\$DEPLOY_PATH\\\"/ || true
+
+              if id www-data >/dev/null 2>&1; then
+                sudo chown -R www-data:www-data \\\"\$DEPLOY_PATH\\\"
+              elif id nginx >/dev/null 2>&1; then
+                sudo chown -R nginx:nginx \\\"\$DEPLOY_PATH\\\"
+              else
+                sudo chown -R ubuntu:ubuntu \\\"\$DEPLOY_PATH\\\"
+              fi
+
+              sudo find \\\"\$DEPLOY_PATH\\\" -type d -exec chmod 755 {} \\;
+              sudo find \\\"\$DEPLOY_PATH\\\" -type f -exec chmod 644 {} \\;
+
+              sudo systemctl restart nginx || true
+              sudo rm -rf /tmp/deploy_payload || true
+
+              echo DEPLOY_OK
+            "
+          """
+        }
+      }
+    }
+
+    stage('Smoke Test') {
+      steps {
+        sh "curl -I http://${DEPLOY_HOST} | head -n 5 || true"
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "✅ Deployment succeeded — open http://${DEPLOY_HOST}"
+    }
+    failure {
+      echo "❌ Deployment failed — check console output"
+    }
+  }
+}
+
 ```
 
 ---
