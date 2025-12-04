@@ -1,0 +1,28 @@
+pipeline {
+  agent any
+  environment {
+    SSH_CREDENTIALS_ID = 'ec2-ssh'
+    REMOTE_USER = 'ubuntu'
+    WEB_ROOT = '/var/www/html'
+    REPO_URL = 'https://github.com/RajAhire-1/static-website-project.git'
+  }
+  stages {
+    stage('Checkout') { steps { checkout scm } }
+    stage('Read EC2 IP') {
+      steps {
+        script { EC2_IP = readFile('ec2_ip.txt').trim(); echo "EC2 IP=${EC2_IP}" }
+      }
+    }
+    stage('Deploy') {
+      steps {
+        sshagent (credentials: [env.SSH_CREDENTIALS_ID]) {
+          sh """
+            ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${EC2_IP} 'if [ -d "${WEB_ROOT}/.git" ]; then cd ${WEB_ROOT} && git reset --hard && git pull origin main; else sudo rm -rf ${WEB_ROOT}/* && git clone ${REPO_URL} ${WEB_ROOT}; fi'
+            ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${EC2_IP} 'sudo chown -R ${REMOTE_USER}:${REMOTE_USER} ${WEB_ROOT} || true; sudo chmod -R 755 ${WEB_ROOT} || true'
+            ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${EC2_IP} 'sudo systemctl restart nginx || sudo service nginx restart || true'
+          """
+        }
+      }
+    }
+  }
+}
