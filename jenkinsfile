@@ -1,28 +1,82 @@
 pipeline {
   agent any
+
   environment {
-    SSH_CREDENTIALS_ID = 'ec2-ssh'
-    REMOTE_USER = 'ubuntu'
+    SSH_CREDENTIALS_ID = 'ec2-ssh'    // Jenkins credential id for SSH private key
+    REMOTE_USER = 'ubuntu'            // change to ec2-user if using Amazon Linux
     WEB_ROOT = '/var/www/html'
     REPO_URL = 'https://github.com/RajAhire-1/static-website-project.git'
   }
+
   stages {
-    stage('Checkout') { steps { checkout scm } }
-    stage('Read EC2 IP') {
+    stage('Checkout') {
       steps {
-        script { EC2_IP = readFile('ec2_ip.txt').trim(); echo "EC2 IP=${EC2_IP}" }
+        // checkout the Jenkinsfile and other files (including ec2_ip.txt if present)
+        checkout scm
       }
     }
-    stage('Deploy') {
+
+    stage('Resolve EC2 IP') {
       steps {
-        sshagent (credentials: [env.SSH_CREDENTIALS_ID]) {
-          sh """
-            ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${EC2_IP} 'if [ -d "${WEB_ROOT}/.git" ]; then cd ${WEB_ROOT} && git reset --hard && git pull origin main; else sudo rm -rf ${WEB_ROOT}/* && git clone ${REPO_URL} ${WEB_ROOT}; fi'
-            ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${EC2_IP} 'sudo chown -R ${REMOTE_USER}:${REMOTE_USER} ${WEB_ROOT} || true; sudo chmod -R 755 ${WEB_ROOT} || true'
-            ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${EC2_IP} 'sudo systemctl restart nginx || sudo service nginx restart || true'
-          """
+        script {
+          // try repo file first, then environment variable, else fail
+          def ip = ''
+          if (fileExists('ec2_ip.txt')) {
+            ip = readFile('ec2_ip.txt').trim()
+            echo "Found ec2_ip.txt in repo: ${ip}"
+          } else if (env.EC2_IP?.trim()) {
+            ip = env.EC2_IP.trim()
+            echo "Found EC2_IP env var: ${ip}"
+          } else {
+            error "EC2 IP not found. Add ec2_ip.txt to repo or set EC2_IP environment variable in job."
+          }
+          // validate simple pattern (very basic)
+          if (!ip.matches('\\d+\\.\\d+\\.\\d+\\.\\d+')) {
+            error "EC2 IP looks invalid: ${ip}"
+          }
+          // export for later stages
+          env.EC2_IP = ip
+          echo "Using EC2 IP = ${env.EC2_IP}"
         }
       }
+    }
+
+    stage('Deploy to EC2 via SSH') {
+      steps {
+        sshagent (credentials: [env.SSH_CREDENTIALS_ID]) {
+          script {
+            // Commands to run remotely: pull if repo present else clone
+            def cmds = """
+              set -e
+              if [ -d "${WEB_ROOT}/.git" ]; then
+                cd ${WEB_ROOT}
+                git fetch --all
+                git reset --hard origin/main || git reset --hard origin/master || true
+                git pull origin main || git pull origin master || true
+              else
+                sudo rm -rf ${WEB_ROOT}/*
+                sudo git clone ${REPO_URL} ${WEB_ROOT} || (echo "git clone failed" && exit 1)
+              fi
+              sudo chown -R ${REMOTE_USER}:${REMOTE_USER} ${WEB_ROOT} || true
+              sudo chmod -R 755 ${WEB_ROOT} || true
+              sudo systemctl restart nginx || sudo service nginx restart || true
+            """
+            // Run the remote commands via SSH. StrictHostKeyChecking=no used for simplicity
+            sh """
+              ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${env.EC2_IP} '${cmds}'
+            """
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Deployment finished successfully to ${env.EC2_IP}"
+    }
+    failure {
+      echo "Deployment failed. Check the console output for errors."
     }
   }
 }
