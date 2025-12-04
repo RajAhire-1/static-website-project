@@ -23,8 +23,12 @@ pipeline {
                                           keyFileVariable: 'SSH_KEY',
                                           usernameVariable: 'SSH_USER')]) {
           sh """
+            # remove any broken jenkins apt list/key which causes apt-get update failure
             ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ${SSH_USER}@${DEPLOY_HOST} '
               set -e
+              sudo rm -f /etc/apt/sources.list.d/jenkins.list || true
+              sudo rm -f /usr/share/keyrings/jenkins-keyring.asc || true
+
               sudo apt-get update -y
               sudo apt-get install -y nginx git
               sudo systemctl enable nginx
